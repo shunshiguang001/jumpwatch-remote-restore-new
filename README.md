@@ -11,3 +11,5 @@ nohup java -jar jumpwatch-remote-0.0.7.jar   --spring.config.location=classpath:
 nohup java -jar jumpwatch-remote-0.0.7.jar   --spring.config.location=classpath:/application-uat.yml  app.log 2>&1 &
 ```
 注意：远端 PATH 可能为空，`command-paths` 已写为绝对路径。
+
+测试push
