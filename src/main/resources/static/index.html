@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>JumpWatch 终极全功能监控助手</title>
+    <link rel="stylesheet" href="js/index.css">
+    <style>
+        [v-cloak] { display: none; }
+        body { background-color: #f4f7f9; margin: 0; font-family: "Microsoft YaHei", sans-serif; }
+        .header { background: #24292e; color: #fff; padding: 12px 25px; display: flex; justify-content: space-between; align-items: center; }
+        .main-container { padding: 20px; }
+        .server-card { margin-bottom: 20px; border-top: 4px solid #409EFF; }
+
+        /* 状态控制台：保留 OK/DOWN 染色效果 */
+        .status-console {
+            background: #0d0d0d; color: #00ff00; padding: 18px; border-radius: 6px;
+            font-family: 'Consolas', 'Monaco', monospace; height: 400px; overflow-y: auto;
+            font-size: 13px; line-height: 1.8; white-space: pre; border: 1px solid #444;
+        }
+        .status-ok { color: #00ff00 !important; font-weight: bold; }
+        .status-down {
+            color: #ff4d4f !important; font-weight: bold; font-size: 15px !important;
+            text-shadow: 0 0 8px rgba(255, 77, 79, 0.8); animation: blink 1s infinite; display: inline-block;
+        }
+        @keyframes blink { 50% { opacity: 0.3; } }
+
+        /* 日志窗口样式：支持高亮和上下文分割线 */
+        .log-toolbar { background: #3e4451; padding: 10px 20px; display: flex; align-items: center; gap: 15px; border-bottom: 1px solid #222; }
+        .log-area {
+            color: #abb2bf; padding: 20px; height: 550px; overflow: auto; background: #282c34;
+            font-family: 'Consolas', monospace; font-size: 13px; white-space: pre-wrap; line-height: 1.6;
+        }
+        .highlight-text { background-color: #ff9800; color: #000; padding: 0 2px; border-radius: 2px; font-weight: bold; }
+        .log-separator { color: #56b6c2; font-weight: bold; border-bottom: 1px dashed #56b6c2; display: block; margin: 12px 0; text-align: center; }
+    </style>
+</head>
+<body>
+
+<div id="app" v-cloak>
+    <div class="header">
+        <div style="font-size: 20px; font-weight: bold;">终极全功能版 (20.224.105.90)</div>
+        <el-button type="primary" size="small" icon="el-icon-refresh" @click="fetchConfig">刷新配置</el-button>
+    </div>
+
+    <div class="main-container">
+        <el-row :gutter="20">
+            <el-col :span="8" v-for="(detail, ip) in configs" :key="ip">
+                <el-card class="server-card" shadow="hover">
+                    <div slot="header"><b><i class="el-icon-monitor"></i> {{ ip }}</b></div>
+                    <div class="status-console">
+                        <div v-html="processStatusText(statusMap[ip])"></div>
+                    </div>
+                    <el-button type="success" size="mini" style="width:100%; margin: 10px 0;" @click="fetchStatus(ip)">更新运行状态</el-button>
+                    <div style="display: flex; flex-wrap: wrap; gap: 5px;">
+                        <el-button v-for="unit in detail.units" :key="unit.name" size="mini" type="info" plain @click="openLog(ip, unit.name)">{{ unit.name }}</el-button>
+                    </div>
+                </el-card>
+            </el-col>
+        </el-row>
+    </div>
+
+    <el-dialog :title="'日志监控: ' + currentUnit + ' (' + currentIp + ')'" :visible.sync="logVisible" width="90%" top="5vh" @close="stopAutoRefresh">
+        <div class="log-toolbar">
+            <el-input v-model="searchKey" placeholder="搜索关键字 (支持 -C 30 上下文展示)" size="small" style="width: 350px;" @keyup.enter.native="refreshLog">
+                <el-button slot="append" icon="el-icon-search" @click="refreshLog">搜索</el-button>
+            </el-input>
+            <el-checkbox v-model="autoRefresh" style="color: #fff">自动刷新 (5s)</el-checkbox>
+            <el-tooltip content="开启后自动滚动到底部"><el-switch v-model="autoScroll" active-color="#13ce66"></el-switch></el-tooltip>
+            <span style="color: #abb2bf; font-size: 12px; margin-left: 20px;">提示：搜索时展示匹配行前后各 30 行内容</span>
+        </div>
+
+        <div v-loading="logLoading" element-loading-background="rgba(0, 0, 0, 0.8)">
+            <pre class="log-area" ref="logBox" v-html="formattedLog"></pre>
+        </div>
+
+        <div slot="footer" style="text-align: right;">
+            <el-button size="small" type="primary" icon="el-icon-refresh" @click="refreshLog">手动刷新</el-button>
+            <el-button size="small" @click="logVisible = false">关闭窗口</el-button>
+        </div>
+    </el-dialog>
+</div>
+
+<script src="js/vue.min.js"></script>
+<script src="js/axios.min.js"></script>
+<script src="js/index.js"></script>
+
+<script>
+    new Vue({
+        el: '#app',
+        data: {
+            configs: {}, statusMap: {}, logVisible: false, logLoading: false, logText: '',
+            currentIp: '', currentUnit: '', searchKey: '', autoRefresh: false, autoScroll: true,
+            timer: null
+        },
+        computed: {
+            formattedLog() {
+                if (!this.logText) return '文件内容为空';
+                let content = this.logText.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                if (this.searchKey) {
+                    const reg = new RegExp(`(${this.searchKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+                    content = content.replace(reg, '<span class="highlight-text">$1</span>');
+                    // 补回上下文分割线美化
+                    content = content.replace(/^--$/gm, '<span class="log-separator">—— 以上为检索上下文分割线 ——</span>');
+                }
+                return content;
+            }
+        },
+        methods: {
+            processStatusText(text) {
+                if (!text) return '正在拉取状态...';
+                let processed = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                processed = processed.replace(/\|\s*(OK)\s*\|/g, '| <span class="status-ok">OK</span>       |');
+                processed = processed.replace(/\|\s*(DOWN)\s*\|/g, '| <span class="status-down">DOWN</span>     |');
+                return processed;
+            },
+            fetchConfig() {
+                axios.get('/api/config').then(res => {
+                    this.configs = res.data;
+                    Object.keys(this.configs).forEach(ip => this.fetchStatus(ip));
+                });
+            },
+            fetchStatus(ip) {
+                this.$set(this.statusMap, ip, '正在更新状态指标...');
+                axios.get('/api/status?ip=' + ip).then(res => { this.$set(this.statusMap, ip, res.data); });
+            },
+            openLog(ip, unit) {
+                this.currentIp = ip; this.currentUnit = unit; this.logText = '连接中...';
+                this.searchKey = ''; this.logVisible = true;
+                this.refreshLog();
+            },
+            refreshLog() {
+                this.logLoading = true;
+                axios.get(`/api/logs?ip=${this.currentIp}&unit=${this.currentUnit}&keyword=${this.searchKey}`).then(res => {
+                    this.logText = res.data || "未查询到相关日志";
+                    if (this.autoScroll) {
+                        this.$nextTick(() => { const b = this.$refs.logBox; if (b) b.scrollTop = b.scrollHeight; });
+                    }
+                }).finally(() => { this.logLoading = false; });
+            },
+            startAutoRefresh() { this.timer = setInterval(this.refreshLog, 5000); },
+            stopAutoRefresh() { if(this.timer) clearInterval(this.timer); this.autoRefresh = false; }
+        },
+        watch: {
+            autoRefresh(val) { val ? this.startAutoRefresh() : this.stopAutoRefresh(); }
+        },
+        mounted() { this.fetchConfig(); }
+    });
+</script>
+</body>
+</html>

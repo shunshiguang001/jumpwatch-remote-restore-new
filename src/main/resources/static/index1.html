@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>JumpWatch Remote 面板</title>
+<style>
+  :root{color-scheme:dark light}
+  body{font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,PingFang SC,Microsoft YaHei,"Noto Sans CJK SC",sans-serif;margin:0;background:#0f1115;color:#d6d6d6}
+  header{padding:14px 20px;background:#111827;position:sticky;top:0;z-index:10;box-shadow:0 1px 0 rgba(255,255,255,.06)}
+  h1{font-size:18px;margin:0}
+  .container{padding:16px 20px;display:grid;grid-template-columns:420px 1fr;gap:16px}
+  .card{background:#0b0d12;border:1px solid #1f2937;border-radius:14px;padding:14px}
+  .muted{color:#9aa4b2}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  select,input,button{background:#0f1520;color:#e5e7eb;border:1px solid #253046;border-radius:10px;padding:8px 10px}
+  button{cursor:pointer}
+  pre{background:#0a0d12;color:#d1d5db;border:1px solid #1f2937;border-radius:12px;padding:10px;height:50vh;overflow:auto;white-space:pre-wrap;word-break:break-word;margin:0}
+  .pill{display:inline-block;padding:4px 8px;border-radius:999px;border:1px solid #253046;background:#0f1520;font-size:12px;color:#b8c0cc}
+  table{width:100%;border-collapse:collapse;margin-top:8px}
+  th,td{border-bottom:1px solid #1f2937;padding:6px 8px;text-align:left;font-size:13px}
+  .actions{display:flex;gap:8px;flex-wrap:wrap}
+  .ok{color:#22c55e} .bad{color:#ef4444} .warn{color:#f59e0b}
+  .spacer{height:8px}
+  .banner{margin:8px 0;padding:8px 10px;border-radius:10px;background:#1b1111;color:#fca5a5;border:1px solid #7f1d1d;display:none}
+</style>
+</head>
+<body>
+<header>
+  <h1>JumpWatch Remote <span class="pill">只读</span></h1>
+</header>
+<div class="container">
+  <section class="card">
+    <h3>主机 & 服务</h3>
+    <div class="row">
+      <label class="muted">主机：</label>
+      <select id="host"></select>
+      <label class="muted">服务：</label>
+      <select id="svc"></select>
+      <button id="refreshWL" data-action>刷新</button>
+    </div>
+    <div id="banner" class="banner"></div>
+    <div class="spacer"></div>
+    <h3>状态与进程</h3>
+    <div class="actions">
+      <button id="btnStatus" data-action>查询状态</button>
+      <button id="btnPids" data-action>查看进程</button>
+    </div>
+    <table>
+      <tbody id="statusBody">
+        <tr><th>ActiveState</th><td id="ActiveState" class="muted">-</td></tr>
+        <tr><th>SubState</th><td id="SubState" class="muted">-</td></tr>
+        <tr><th>MainPID</th><td id="MainPID" class="muted">-</td></tr>
+      </tbody>
+    </table>
+    <div class="spacer"></div>
+    <div>
+      <strong>进程列表</strong>
+      <table>
+        <thead><tr><th>PID</th><th>命令</th></tr></thead>
+        <tbody id="pidBody"><tr><td colspan="2" class="muted">暂无</td></tr></tbody>
+      </table>
+    </div>
+    <div class="spacer"></div>
+    <h3>日志控制</h3>
+    <div class="row">
+      <button id="btnStart" data-action>按服务开始</button>
+      <button id="btnStartFile" data-action>按文件开始</button>
+      <button id="btnStop">停止</button>
+      <button id="btnClear">清空</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <input id="filter" placeholder="包含关键字（可选）"/>
+      <span class="muted">只显示包含该关键字的行</span>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="row" style="justify-content:space-between">
+      <h3>实时日志</h3>
+      <div class="muted" id="connState">未连接</div>
+    </div>
+    <pre id="log"></pre>
+  </section>
+</div>
+
+<script>
+const hostSel  = document.getElementById('host');
+const svcSel   = document.getElementById('svc');
+const pidBody  = document.getElementById('pidBody');
+const logPre   = document.getElementById('log');
+const filterInp= document.getElementById('filter');
+const connState= document.getElementById('connState');
+const banner   = document.getElementById('banner');
+let es = null;
+let hostData = {};
+let loaded = false;
+
+function showErr(msg){
+  banner.style.display = 'block';
+  banner.textContent = msg;
+}
+function clearErr(){
+  banner.style.display = 'none';
+  banner.textContent = '';
+}
+function disableActions(disabled){
+  document.querySelectorAll('[data-action]').forEach(b => b.disabled = disabled);
+}
+
+async function apiGet(url){
+  try{
+    const r = await fetch(url, {headers:{'Accept':'application/json'}});
+    const ct = r.headers.get('content-type') || '';
+    if(!r.ok){
+      const txt = ct.includes('json') ? JSON.stringify(await r.json()) : await r.text();
+      throw new Error(`HTTP ${r.status} ${r.statusText} - ${txt}`);
+    }
+    return ct.includes('json') ? r.json() : r.text();
+  }catch(e){
+    showErr(e.message);
+    throw e;
+  }
+}
+
+async function loadHosts(){
+  disableActions(true);
+  clearErr();
+  const data = await apiGet('/api/hosts');
+  hostData = data.hosts || {};
+  hostSel.innerHTML = '';
+  const aliases = Object.keys(hostData);
+  aliases.forEach(alias=>{
+    const ip = hostData[alias].ip;
+    const o = document.createElement('option');
+    o.value = alias; o.textContent = `${alias} (${ip})`;
+    hostSel.appendChild(o);
+  });
+
+  if (aliases.length === 0){
+    showErr('配置中没有可用主机，请检查 application.yml 的 jumpwatch.hosts');
+    loaded = false;
+    return;
+  }
+
+  hostSel.value = aliases[0];
+  loadServices(true);
+  loaded = true;
+  disableActions(false);
+}
+
+function loadServices(selectFirst=false){
+  clearErr();
+  svcSel.innerHTML='';
+  const h = hostData[hostSel.value];
+  (h?.allowedUnits || []).forEach(u=>{
+    const o = document.createElement('option');
+    o.value = u; o.textContent = u;
+    svcSel.appendChild(o);
+  });
+  if(selectFirst && svcSel.options.length>0){
+    svcSel.value = svcSel.options[0].value;
+  }
+}
+
+function ensureSelection(kind){
+  if(!loaded){ showErr('主机列表尚未加载'); return false; }
+  if(!hostSel.value){ showErr('请选择主机'); return false; }
+  if(kind==='unit' && !svcSel.value){ showErr('请选择服务'); return false; }
+  if(kind==='file'){
+    const h = hostData[hostSel.value] || {};
+    const ok = h.allowedLogs && h.allowedLogs[svcSel.value];
+    if(!ok){ showErr('该服务未配置文件日志路径'); return false; }
+  }
+  clearErr();
+  return true;
+}
+
+function setStatusField(id, val, cls){
+  const el = document.getElementById(id);
+  el.textContent = val ?? '-';
+  el.className = (cls||'') + ' ' + (val? '': 'muted');
+}
+function colorByActive(s){
+  if (s === 'active') return 'ok';
+  if (s === 'activating') return 'warn';
+  return 'bad';
+}
+
+async function fetchStatus(){
+  if(!ensureSelection('unit')) return;
+  const host = hostSel.value, unit = svcSel.value;
+  const data = await apiGet('/api/service/status?host='+encodeURIComponent(host)+'&unit='+encodeURIComponent(unit));
+  const active = data.ActiveState || '-';
+  setStatusField('ActiveState', active, colorByActive(active));
+  setStatusField('SubState', data.SubState || '-', '');
+  setStatusField('MainPID', data.MainPID || '-', '');
+}
+
+async function fetchPids(){
+  if(!ensureSelection('unit')) return;
+  const host = hostSel.value;
+  const patt = 'uchain-';
+  const data = await apiGet('/api/process/pids?host='+encodeURIComponent(host)+'&pattern='+encodeURIComponent(patt));
+  const arr = data.pids || [];
+  pidBody.innerHTML = '';
+  if(arr.length===0){
+    pidBody.innerHTML = '<tr><td colspan="2" class="muted">未找到</td></tr>';
+    return;
+  }
+  arr.forEach(it=>{
+    const tr = document.createElement('tr');
+    const td1 = document.createElement('td'); td1.textContent = it.pid;
+    const td2 = document.createElement('td'); td2.textContent = it.cmd;
+    tr.appendChild(td1); tr.appendChild(td2);
+    pidBody.appendChild(tr);
+  });
+}
+
+function startLogsByUnit(){
+  if(!ensureSelection('unit')) return;
+  const host = hostSel.value, unit = svcSel.value;
+  startSSE('/api/logs/stream?host='+encodeURIComponent(host)+'&unit='+encodeURIComponent(unit));
+}
+
+function startLogsByFile(){
+  if(!ensureSelection('file')) return;
+  const host = hostSel.value, unit = svcSel.value;
+  startSSE('/api/logs/stream?host='+encodeURIComponent(host)+'&file='+encodeURIComponent(unit));
+}
+
+function startSSE(url){
+  stopSSE();
+  connState.textContent = '连接中…';
+  try{
+    es = new EventSource(url);
+    es.onopen   = () => { connState.textContent = '已连接'; };
+    es.onerror  = () => { connState.textContent = '异常/重试中'; };
+    es.onmessage= (e) => {
+      const kw = filterInp.value.trim();
+      if (kw && !e.data.includes(kw)) return;
+      logPre.textContent += e.data + '\n';
+      logPre.scrollTop = logPre.scrollHeight;
+    };
+  }catch(e){
+    showErr(e.message||String(e));
+    connState.textContent = '连接失败';
+  }
+}
+
+function stopSSE(){ if (es){ es.close(); es=null; } connState.textContent='未连接'; }
+function clearLog(){ logPre.textContent=''; }
+
+document.getElementById('refreshWL').onclick = ()=>{ stopSSE(); loadHosts().then(fetchStatus).then(fetchPids).catch(()=>{}); };
+hostSel.addEventListener('change', ()=>{ stopSSE(); loadServices(true); fetchStatus().then(fetchPids).catch(()=>{}); });
+document.getElementById('btnStatus').onclick = ()=>fetchStatus().catch(()=>{});
+document.getElementById('btnPids').onclick   = ()=>fetchPids().catch(()=>{});
+document.getElementById('btnStart').onclick  = ()=>startLogsByUnit();
+document.getElementById('btnStartFile').onclick = ()=>startLogsByFile();
+document.getElementById('btnStop').onclick   = ()=>stopSSE();
+document.getElementById('btnClear').onclick  = ()=>clearLog();
+
+disableActions(true);
+loadHosts().then(fetchStatus).then(fetchPids).catch(()=>{});
+</script>
+</body>
+</html>
