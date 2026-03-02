@@ -6,3 +6,4 @@ application*.yml.bak
 *.bak
 *.bak.yml
 *.log
+!application-test.yml
