@@ -16,6 +16,15 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.Executors;
 
+/**
+ * 项目名称: jumpwatch-remote-restore
+ * 类名称: MonitorApplication
+ *
+ * @author blx
+ * @date 2026-03-02
+ * @version 7.0
+ * @description 服务监控启动类
+ */
 @Service
 public class SSHExecService {
     private final JumpWatchConfig cfg;

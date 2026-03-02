@@ -6,6 +6,15 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 import java.util.Map;
 
+/**
+ * 项目名称: jumpwatch-remote-restore
+ * 类名称: MonitorApplication
+ *
+ * @author blx
+ * @date 2026-03-02
+ * @version 7.0
+ * @description 服务监控启动类
+ */
 @RestController
 @RequestMapping("/api")
 public class MonitorController {

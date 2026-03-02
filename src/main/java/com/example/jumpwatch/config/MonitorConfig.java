@@ -5,6 +5,15 @@ import org.springframework.context.annotation.Configuration;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 项目名称: jumpwatch-remote-restore
+ * 类名称: MonitorApplication
+ *
+ * @author blx
+ * @date 2026-03-02
+ * @version 7.0
+ * @description 服务监控启动类
+ */
 @Configuration
 @ConfigurationProperties(prefix = "monitor")
 public class MonitorConfig {
