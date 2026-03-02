@@ -1,3 +1,7 @@
 target/
 .idea/
 *.iml
+application*.yml
+application*.yml.bak
+*.bak
+*.bak.yml
