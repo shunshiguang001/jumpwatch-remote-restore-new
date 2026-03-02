@@ -1,7 +1,7 @@
 # JumpWatch Remote (简易版监控系统)
 # 可以查看日志-支持300行，文件检索关键字上下文30行匹配
 # 服务器状态查看，包含cpu 内存 磁盘 只针对home盘和app盘
-# 禁止盗用用于
+# 禁止盗用
 构建：`mvn -DskipTests clean package`   
 运行：
 ```bash
