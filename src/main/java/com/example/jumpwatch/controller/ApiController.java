@@ -1,3 +1,4 @@
+/*
 package com.example.jumpwatch.controller;
 
 import com.example.jumpwatch.config.JumpWatchConfig;
@@ -9,6 +10,7 @@ import reactor.core.publisher.Flux;
 import java.util.List;
 import java.util.Map;
 
+*/
 /**
  * 项目名称: jumpwatch-remote-restore
  * 类名称: MonitorApplication
@@ -17,7 +19,8 @@ import java.util.Map;
  * @date 2026-03-02
  * @version 7.0
  * @description 服务监控启动类
- */
+ *//*
+
 
 @RestController
 @RequestMapping("/api")
@@ -71,3 +74,4 @@ public class ApiController {
         );
     }
 }
+*/

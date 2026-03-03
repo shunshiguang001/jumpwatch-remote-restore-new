@@ -54,11 +54,11 @@
             <version>0.37.0</version>
         </dependency>
 
-        <dependency>
+<!--        <dependency>
             <groupId>com.github.mwiede</groupId>
             <artifactId>jsch</artifactId>
             <version>0.2.16</version>
-        </dependency>
+        </dependency>-->
 
         <!-- 配置处理器（可选：让 IDEA 识别 application.yml） -->
         <dependency>
